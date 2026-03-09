@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LCA Crash Repro – WebContentsImpl::GetDelegate</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background: #0d1117;
+        color: #c9d1d9;
+        padding: 32px;
+        min-height: 100vh;
+      }
+      h1 { color: #ff6b6b; font-size: 20px; margin-bottom: 8px; }
+      h1 code { font-size: 16px; background: #161b22; padding: 2px 8px; border-radius: 4px; }
+      .badge {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 600;
+        margin: 4px 4px 4px 0;
+      }
+      .badge-red    { background: #3d1a1a; color: #ff6b6b; border: 1px solid #ff6b6b44; }
+      .badge-yellow { background: #2e2600; color: #f0b429; border: 1px solid #f0b42944; }
+      .badge-blue   { background: #0c1a2e; color: #58a6ff; border: 1px solid #58a6ff44; }
+      .section {
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 8px;
+        padding: 16px 20px;
+        margin: 16px 0;
+      }
+      .section h3 { color: #58a6ff; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+      .code {
+        background: #0d1117;
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        padding: 12px 16px;
+        font-family: 'Cascadia Code', 'Fira Code', monospace;
+        font-size: 12px;
+        line-height: 1.7;
+        color: #e6edf3;
+        white-space: pre;
+        overflow-x: auto;
+      }
+      .highlight { color: #ff6b6b; }
+      .step {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        margin: 8px 0;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      .step-num {
+        background: #58a6ff;
+        color: #0d1117;
+        border-radius: 50%;
+        width: 20px;
+        height: 20px;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        font-weight: 700;
+        margin-top: 2px;
+      }
+      #log {
+        font-family: monospace;
+        font-size: 12px;
+        max-height: 180px;
+        overflow-y: auto;
+        line-height: 1.6;
+      }
+      .log-entry { border-bottom: 1px solid #21262d; padding: 3px 0; }
+      .log-entry.crash { color: #ff6b6b; font-weight: bold; }
+      .log-entry.info  { color: #3fb950; }
+    </style>
+  </head>
+  <body>
+    <h1>Crash Repro: <code>content::WebContentsImpl::GetDelegate</code></h1>
+
+    <span class="badge badge-red">Fatal Crash</span>
+    <span class="badge badge-yellow">Windows Only</span>
+    <span class="badge badge-blue">Electron 40.x regression</span>
+    <span class="badge badge-blue">electron/electron#50102</span>
+
+    <div class="section">
+      <h3>Root Cause (condensed stack)</h3>
+      <div class="code">WebContents::DeleteThisIfAlive → <span class="highlight">delete this</span>
+  InspectableWebContents::~InspectableWebContents   ← already freed here
+  InspectableWebContentsView::~InspectableWebContentsView
+  views::View::~View → parent_->RemoveChildView
+  NativeViewHostAura::RemovedFromWidget → aura::Window::Hide()
+  WindowEventDispatcher::<span class="highlight">PostSynthesizeMouseMove</span>   ← re-enters win32 pump
+    WindowFromPoint()  →  KiUserCallbackDispatch
+    LegacyRenderWidgetHostHWND → WM_NCHITTEST
+  WinFrameView::NonClientHitTest (frame:false windows only)
+  WebContentsView::NonClientHitTest
+  <span class="highlight">content::WebContentsImpl::GetDelegate</span>  ← ACCESS VIOLATION 💥</div>
+    </div>
+
+    <div class="section">
+      <h3>How to trigger</h3>
+      <div class="step"><span class="step-num">1</span><span>Run this fiddle on <strong>Windows</strong> with <strong>Electron 40.x</strong> (verified crash-free on 37.x)</span></div>
+      <div class="step"><span class="step-num">2</span><span>Move mouse cursor <strong>to the purple popup window</strong> ("Frameless Window")</span></div>
+      <div class="step"><span class="step-num">3</span><span>Keep the cursor hovering there while it <strong>cycles open → close</strong></span></div>
+      <div class="step"><span class="step-num">4</span><span>Crash typically occurs within <strong>1–15 cycles</strong> — EXCEPTION_ACCESS_VIOLATION_READ</span></div>
+    </div>
+
+    <div class="section">
+      <h3>Cycle log</h3>
+      <div id="log"><div class="log-entry info">Waiting for first cycle…</div></div>
+    </div>
+
+    <script src="renderer.js"></script>
+  </body>
+</html>
